@@ -1,0 +1,493 @@
+---
+title: "Мастер-класс по анализу данных решений арбитражных судов в R"
+author: "Алексей Кнорре"
+date: '4 марта 2017'
+output: slidy_presentation
+---
+
+```{r setup, include=FALSE}
+
+library(ggplot2)
+library(dplyr)
+library(scales)
+options(tibble.print_max = 18, tibble.print_min = 6)
+options(tibble.width = Inf)
+knitr::opts_chunk$set(echo = FALSE, warning=FALSE, message = FALSE)
+setwd("C:\\Users\\Alexey\\Dropbox\\IRL\\Открытые данные\\Арбитраж\\Мастер-класс")
+commercial_courts_cases <- read.csv(file = "IRL_commercial_courts_decisions_2009_RUS.csv", stringsAsFactors = FALSE)
+attach(commercial_courts_cases)
+```
+
+##  Начало
+Эту презентацию, код и данные можно найти здесь:
+https://github.com/alexeyknorre/Rbitrazh  
+или здесь:  
+https://clck.ru/Afiti
+
+## О себе
+
+Социолог в Институте проблем правоприменения при ЕУСПб.  
+Занимаюсь анализом данных криминальной статистики, например, [наркотиками](http://enforce.spb.ru/images/analit_zapiski/FSKN_MVD_memo_2015_web.pdf) и [убийствами](http://www.vedomosti.ru/opinion/articles/2016/11/03/663453-podschet-ubiistv).   
+
+
+## Данные решений арбитражных судов
+
+10893 закодированных решения с сайтов арбитражных судов. Случайная выборка из 5 млн. дел за 2007-2011 годы.  
+Данные в открытом виде [доступны на Dataverse](https://dataverse.harvard.edu/dataverse/irl_data).  
+По ссылке есть инструкция для вводчиков/кодбук, 80 переменных.  
+Данные использовались для нескольких статей и аналитических записок, наиболее полный отчёт по исследованию этих данных  [здесь](http://enforce.spb.ru/images/analit_zapiski/irl_arbitrazh_site_new.pdf).
+
+## О чём мастер-класс?
+
+- *Начальные приёмы рукопашного боя с данными*
+- Пакеты ggplot2 и dplyr для анализа данных
+- Визуализация, логарифмирование переменной и подготовка/группировка данных
+- Репликация результатов ("копеечные дела")
+
+## Используемые переменные
+
+- **dec_sum** - сумма иска
+- **date_...** - даты принятия иска, первого суда и решения суда
+- **dec_type** - кто заявитель? 
+- **pair** - производная переменная, показывающая, кто заявитель (гос.орган или предприниматель) и истец (4 возможных значения)
+- **regi** - регион, в котором рассматривалось дело
+
+## На какие вопросы будем отвечать:
+
+- Что можно сказать о сумме иска в арбитражных делах? От чего зависит сумма иска?
+- Как долго рассматривается дело судом? От чего это может зависеть? Где и с кем дела рассматриваются быстрее, а где медленнее?
+- Связаны ли сумма иска и длительность рассмотрения?
+
+## к делу
+
+Подгружаем библиотеки и данные:
+
+```{r eval=FALSE, echo=TRUE}
+library(ggplot2)
+library(dplyr)
+library(scales)
+
+
+commercial_courts_cases <- read.csv("https://github.com/alexeyknorre/Rbitrazh/raw/master/IRL_commcourts_decisions_cp1251.csv",
+          stringsAsFactors = FALSE)
+attach(commercial_courts_cases)
+```
+
+
+## Базовая описательная статистика для суммы иска
+
+```{r cars, echo = TRUE}
+summary(sum_dec)
+```
+
+## Попробуем гистограмму
+
+```{r echo=TRUE}
+qplot(sum_dec)
+```
+
+
+
+## Попробуем гистограмму с отсечкой по третьему квартилю (меньше 300 т.р.)
+
+```{r echo=TRUE}
+qplot(subset(commercial_courts_cases, sum_dec < 300000)$sum_dec,
+      xlab = "Сумма иска, в рублях",
+      ylab = "Количество дел в выборке")
+```
+
+## Kernel density estimation (= продвинутая гистограмма)
+
+Во-первых, нужно логарифмировать, чтобы сделать распределение более наглядным.  
+Во-вторых, вместо гистограммы можно использовать KDE.  
+KDE - это продвинутая гистограмма, kernel density estimation, или ядерная оценка плотности.   Используется функция для сглаживания распределения данных.
+
+## Расчехляем ggplot2
+
+Аргумент adjust - это ширина окна ядерной функции.
+
+```{r eval=FALSE, echo=TRUE}
+ggplot(commercial_courts_cases, aes(x=sum_dec)) + 
+  geom_line(stat="density",adjust = 0.01)+
+  scale_x_continuous(trans = 'log10',
+                      breaks = trans_breaks('log10', function(x) 10^x),
+                      labels = comma)+
+  xlab("Сумма заявленного иска, в рублях (логарифмированная шкала)")+
+  ylab("Доля исков с указанной суммой")+
+  ggtitle("Распределение арбитражных дел по сумме заявленного иска")+
+  theme_bw() +
+  theme(axis.line = element_line(colour = "black"),
+        plot.title = element_text(hjust = 0.5))
+```
+
+## KDE с шириной окна 0.5
+
+```{r}
+
+ggplot(commercial_courts_cases, aes(x=sum_dec)) + 
+  geom_line(stat="density",adjust = 0.5)+
+  scale_x_continuous(trans = 'log10',
+                      breaks = trans_breaks('log10', function(x) 10^x),
+                      labels = comma)+
+  xlab("Сумма заявленного иска, в рублях (логарифмированная шкала)")+
+  ylab("Доля исков с указанной суммой")+
+  ggtitle("Распределение арбитражных дел по сумме заявленного иска")+
+  theme_bw() +
+  theme(axis.line = element_line(colour = "black"),
+        plot.title = element_text(hjust = 0.5))
+```
+
+## KDE с шириной окна 0.1
+
+```{r}
+
+ggplot(commercial_courts_cases, aes(x=sum_dec)) + 
+  geom_line(stat="density",adjust = 0.1)+
+  scale_x_continuous(trans = 'log10',
+                      breaks = trans_breaks('log10', function(x) 10^x),
+                      labels = comma)+
+  xlab("Сумма заявленного иска, в рублях (логарифмированная шкала)")+
+  ylab("Доля исков с указанной суммой")+
+  ggtitle("Распределение арбитражных дел по сумме заявленного иска")+
+  theme_bw() +
+  theme(axis.line = element_line(colour = "black"),
+        plot.title = element_text(hjust = 0.5))
+```
+
+## KDE с шириной окна 0.01
+
+```{r}
+
+ggplot(commercial_courts_cases, aes(x=sum_dec)) + 
+  geom_line(stat="density",adjust = 0.01)+
+  scale_x_continuous(trans = 'log10',
+                      breaks = trans_breaks('log10', function(x) 10^x),
+                      labels = comma)+
+  xlab("Сумма заявленного иска, в рублях (логарифмированная шкала)")+
+  ylab("Доля исков с указанной суммой")+
+  ggtitle("Распределение арбитражных дел по сумме заявленного иска")+
+  theme_bw() +
+  theme(axis.line = element_line(colour = "black"),
+        plot.title = element_text(hjust = 0.5))
+```
+
+## Что может повлиять на размер суммы?
+
+- Может быть, заявитель и истец? Для этого есть отличная переменная *pair*:
+
+```{r echo=TRUE}
+table(pair)
+```
+
+## Немного изменим код:
+
+```{r eval=FALSE, echo=TRUE}
+ggplot(commercial_courts_cases, aes(x=sum_dec)) + 
+  geom_line(stat="density",adjust = 0.6)+
+  scale_x_continuous(trans = 'log10',
+                      breaks = trans_breaks('log10', function(x) 10^x),
+                      labels = comma)+
+  xlab("Сумма заявленного иска, в рублях (логарифмированная шкала)")+
+  ylab("Доля исков с указанной суммой")+
+  ggtitle("Распределение арбитражных дел по сумме заявленного иска")+
+  theme_bw() +
+  theme(axis.line = element_line(colour = "black"),
+        plot.title = element_text(hjust = 0.5))
+
+```
+
+## Немного изменим код:
+
+```{r eval=FALSE, echo=TRUE}
+ggplot(commercial_courts_cases, aes(x=sum_dec, color = pair) + 
+  geom_line(stat="density",adjust = 0.6, aes(color = pair))+
+  scale_x_continuous(trans = 'log10',
+                     breaks = trans_breaks('log10', function(x) 10^x),
+                     labels = comma)+
+  xlab("Сумма заявленного иска, в рублях (логарифмированная шкала)")+
+  ylab("Доля исков с указанной суммой")+
+  ggtitle("Распределение арбитражных дел по сумме заявленного иска в зависимости от пары истец-ответчик")+
+  theme_bw() +
+  theme(axis.line = element_line(colour = "black"),
+        legend.position="bottom",
+        legend.direction ="vertical",
+        plot.title = element_text(hjust = 0.5))
+
+```
+
+## Распределение сумм для каждого типа пары заявитель-истец
+
+```{r}
+ggplot(commercial_courts_cases, aes(x=sum_dec, color = pair)) + 
+  geom_line(stat="density",adjust = 0.6, aes(color = pair))+
+  scale_x_continuous(trans = 'log10',
+                     breaks = trans_breaks('log10', function(x) 10^x),
+                     labels = comma)+
+  xlab("Сумма заявленного иска, в рублях (логарифмированная шкала)")+
+  ylab("Доля исков с указанной суммой")+
+  ggtitle("Распределение арбитражных дел по сумме заявленного иска в зависимости от пары истец-ответчик")+
+  theme_bw() +
+  theme(axis.line = element_line(colour = "black"),
+        legend.position="bottom",
+        legend.direction ="vertical",
+        plot.title = element_text(hjust = 0.5))
+
+```
+
+## Возьмём только дела государства против предпринимателей:
+
+```{r}
+ggplot(subset(commercial_courts_cases,pair=="Гос. орган vs. Предприниматель"), aes(x=sum_dec)) + 
+  geom_line(stat="density",adjust = 0.2)+
+  scale_x_continuous(trans = 'log10',
+                     breaks = trans_breaks('log10', function(x) 10^x),
+                     labels = comma)+
+  xlab("Сумма заявленного иска, в рублях (логарифмированная шкала)")+
+  ylab("Доля исков с указанной суммой")+
+  ggtitle("Распределение арбитражных дел по сумме заявленного иска")+
+  theme_bw() +
+  theme(axis.line = element_line(colour = "black"),
+        plot.title = element_text(hjust = 0.5))
+```
+
+## Арбитражные дела государства против предпринимателей
+
+```{r echo=TRUE}
+summary(subset(commercial_courts_cases,pair=="Гос. орган vs. Предприниматель")$sum_dec)
+
+```
+
+Самые частовстречающиеся суммы исков:
+```{r echo=TRUE}
+head(sort(table(subset(commercial_courts_cases,pair=="Гос. орган vs. Предприниматель")$sum_dec),
+          decreasing = TRUE))
+```
+
+## dplyr и таблички (пары)
+
+Зашли визуально, теперь подойдем к суммам исков с помощью таблиц медиан.
+Используем пакет dplyr:
+```{r echo=TRUE}
+commercial_courts_cases %>%  
+  filter(!is.na(sum_dec)) %>%
+  group_by(pair) %>%
+  summarise("Медиана суммы иска"=median(sum_dec),Частота = n()) %>% 
+  mutate (Доля = Частота / sum(Частота)) %>% 
+  arrange(desc(Доля))
+```
+
+## dplyr и таблички (заявители)
+
+То же самое, но для каждого из заявителей:
+```{r echo=TRUE}
+commercial_courts_cases %>%  
+  filter(!is.na(sum_dec)) %>%
+  group_by(dec_type) %>%
+  summarise("Медиана суммы иска"=median(sum_dec),Частота = n()) %>% 
+  mutate (Доля = Частота / sum(Частота)) %>% 
+  arrange(desc(Доля))
+```
+
+## Группировка сумм по группам
+
+```{r echo=TRUE}
+commercial_courts_cases$sum_grouped <- cut(commercial_courts_cases$sum_dec, 
+      breaks = c(-Inf, 1000, 10000, 50000, 100000, 500000, Inf), 
+      labels = c("<1 т.р.", "1-10 т.р.", "10-50 т.р.", "50-100 т.р.", "100-500 т.р.", ">500т.р."), 
+      right = FALSE)
+
+table(commercial_courts_cases$pair, commercial_courts_cases$sum_grouped)
+
+```
+
+## Медианы в каждой подгруппе суммы иска
+
+```{r echo=TRUE}
+commercial_courts_cases %>%  
+  filter(!is.na(sum_dec)) %>%
+  group_by(sum_grouped) %>%
+  summarise("Медиана суммы иска"=median(sum_dec),Частота = n()) %>% 
+  mutate (Доля = Частота / sum(Частота))
+```
+
+## Длительность рассмотрения дел
+
+Переменные длительности рассмотрения дел:
+- **date_bil** - дата подачи заявления
+- **date_ses** - дата первого судебного заседания
+- **date_des** - дата первого судебного решения
+
+Вычисляем разницу:
+
+```{r echo=TRUE}
+commercial_courts_cases$time_diff_bill_to_court <- as.numeric(
+  as.Date(as.character(date_ses), format="%Y-%m-%d")-
+  as.Date(as.character(date_bil), format="%Y-%m-%d"))
+
+commercial_courts_cases$time_diff_bill_to_decision <- as.numeric(
+  as.Date(as.character(date_des), format="%Y-%m-%d")-
+  as.Date(as.character(date_bil), format="%Y-%m-%d"))
+
+commercial_courts_cases$time_diff_court_to_decision <- as.numeric(
+  as.Date(as.character(date_des), format="%Y-%m-%d")-
+  as.Date(as.character(date_ses), format="%Y-%m-%d"))
+```
+
+## Связь между продолжительностью рассмотрения иска и судебным разбирательством
+
+Можно вычислить коэффициент корреляции:
+
+```{r echo=TRUE}
+cor(commercial_courts_cases$time_diff_bill_to_court,
+    commercial_courts_cases$time_diff_court_to_decision, 
+    method = "spearman", use = "pairwise.complete.obs")
+```
+
+... но лучше визуализировать:
+
+```{r eval=FALSE, echo = TRUE}
+ggplot(commercial_courts_cases,aes(x=time_diff_bill_to_court, y = time_diff_court_to_decision)) + 
+  geom_point(alpha=0.1)+
+  xlab("От подачи заявления до первого суда, в днях")+
+  ylab("От первого суда до решения суда, в днях")+
+  ggtitle("Время рассмотрения VS время разбирательства")+
+  theme_bw() +
+  theme(axis.line = element_line(colour = "black"),
+        plot.title = element_text(hjust = 0.5))
+
+```
+
+
+## Связь между продолжительностью рассмотрения иска и судебным разбирательством
+
+
+
+```{r}
+ggplot(commercial_courts_cases,aes(x=time_diff_bill_to_court, y = time_diff_court_to_decision)) + 
+  geom_point(alpha=0.1)+
+  xlab("От подачи заявления до первого суда, в днях")+
+  ylab("От первого суда до решения суда, в днях")+
+  ggtitle("Время рассмотрения VS время разбирательства")+
+  theme_bw() +
+  theme(axis.line = element_line(colour = "black"),
+        plot.title = element_text(hjust = 0.5))
+
+```
+
+
+## Отсечка по 200 дням
+
+```{r}
+ggplot(subset(commercial_courts_cases, 
+              time_diff_court_to_decision<200 & 
+                time_diff_bill_to_court < 200),
+       aes(x=time_diff_bill_to_court, y = time_diff_court_to_decision)) + 
+  geom_point(alpha=0.1)+
+  xlab("От подачи заявления до первого суда, в днях")+
+  ylab("От первого суда до решения суда, в днях")+
+  ggtitle("Время рассмотрения VS время разбирательства")+
+  theme_bw() +
+  theme(axis.line = element_line(colour = "black"),
+        plot.title = element_text(hjust = 0.5))
+```
+
+## Регионы: где рассматривают арбитражные дела дольше всего?
+```{r echo=TRUE}
+commercial_courts_cases %>%  
+  group_by(regi) %>%
+  summarise("Иск->Суд"=median(time_diff_bill_to_court, na.rm = TRUE),
+            "Суд->Решение"=median(time_diff_court_to_decision, na.rm = TRUE),
+            "Иск->Решение"=median(time_diff_bill_to_decision, na.rm = TRUE),
+            Частота = n()) %>% 
+  mutate (Доля = Частота / sum(Частота)) %>% 
+  arrange(desc(Доля))
+```
+
+## Где рассматривают быстрее всего?
+
+```{r echo=TRUE}
+commercial_courts_cases %>%  
+  group_by(regi) %>%
+  summarise("Иск->Суд"=median(time_diff_bill_to_court, na.rm = TRUE),
+            "Суд->Решение"=median(time_diff_court_to_decision, na.rm = TRUE),
+            "Иск_Решение"=median(time_diff_bill_to_decision, na.rm = TRUE),
+            Частота = n()) %>% 
+  mutate (Доля = Частота / sum(Частота)) %>% 
+  arrange(Иск_Решение)
+```
+
+## Длительность рассмотрения и пары заявитель-истец
+
+```{r echo=TRUE}
+commercial_courts_cases %>%  
+  group_by(pair) %>%
+  summarise("Иск->Суд"=median(time_diff_bill_to_court, na.rm = TRUE),
+            "Суд->Решение"=median(time_diff_court_to_decision, na.rm = TRUE),
+            "Иск_Решение"=median(time_diff_bill_to_decision, na.rm = TRUE),
+            Частота = n()) %>% 
+  mutate (Доля = Частота / sum(Частота)) %>% 
+  arrange(desc(Иск_Решение))
+```
+
+## Длительность и типы заявителей
+
+```{r echo=TRUE}
+commercial_courts_cases %>%  
+  group_by(dec_type) %>%
+  summarise("Иск->Суд"=median(time_diff_bill_to_court, na.rm = TRUE),
+            "Суд->Решение"=median(time_diff_court_to_decision, na.rm = TRUE),
+            "ИскРешение"=median(time_diff_bill_to_decision, na.rm = TRUE),
+            Частота = n()) %>% 
+  mutate (Доля = Частота / sum(Частота)) %>% 
+  arrange(desc(ИскРешение))
+```
+
+## Длительность и типы заявителей
+
+```{r echo=TRUE}
+commercial_courts_cases %>%  
+  group_by(dec_type) %>%
+  summarise("Иск->Суд"=median(time_diff_bill_to_court, na.rm = TRUE),
+            "Суд->Решение"=median(time_diff_court_to_decision, na.rm = TRUE),
+            "ИскРешение"=median(time_diff_bill_to_decision, na.rm = TRUE),
+            Частота = n()) %>% 
+  mutate (Доля = Частота / sum(Частота)) %>% 
+  arrange(ИскРешение)
+```
+
+
+
+
+## Связаны ли сумма иска и длительность дела?
+
+```{r echo=TRUE}
+ggplot(commercial_courts_cases,aes(x=sum_dec, y = time_diff_bill_to_decision)) + 
+  geom_point(alpha=0.05)+
+  scale_x_continuous(trans = 'log10',
+                     breaks = trans_breaks('log10', function(x) 10^x),
+                     labels = comma)+
+  xlab("Сумма заявленного иска, в рублях (логарифмированная шкала)")+
+  ylab("Время от принятия иска до решения суда, в днях")+
+  ggtitle("Сумма иска и время работы")+
+  theme_bw() +
+  theme(axis.line = element_line(colour = "black"),
+        plot.title = element_text(hjust = 0.5))
+```
+
+## Конец
+
+Всё про эту презетацию есть здесь:   
+https://github.com/alexeyknorre/Rbitrazh
+
+Контакты:   
+alexeyknorre.ru  
+vk.com/alexeyknorre  
+aknorre@eu.spb.ru  
+
+
+
+
+
+
+
+

@@ -3,8 +3,11 @@ library(dplyr)
 library(scales)
 
 # Загружаем данные...
-setwd("C:\\Users\\Alexey\\Dropbox\\IRL\\Открытые данные\\Арбитраж\\Мастер-класс")
-commercial_courts_cases <- read.csv(file = "IRL_commercial_courts_decisions_2009_RUS.csv", stringsAsFactors = FALSE)
+commercial_courts_cases <- read.csv("https://github.com/alexeyknorre/Rbitrazh/raw/master/IRL_commcourts_decisions_cp1251.csv",
+          stringsAsFactors = FALSE)
+# Битая кодировка? попробуй это:
+# commercial_courts_cases <- read.csv("https://github.com/alexeyknorre/Rbitrazh/raw/master/IRL_commcourts_decisions.csv",
+          stringsAsFactors = FALSE)
 attach(commercial_courts_cases)
 
 
